@@ -1,6 +1,7 @@
 #include "table/table.h"
 
 #include "table/table_page.h"
+#include <iostream>
 
 namespace huadb {
 
@@ -36,8 +37,58 @@ Rid Table::InsertRecord(std::shared_ptr<Record> record, xid_t xid, cid_t cid, bo
   // 创建新页面时需设置前一个页面的 next_page_id，并将新页面初始化
   // 找到空间足够的页面后，通过 TablePage 插入记录
   // 返回插入记录的 rid
-  // LAB 1 BEGIN
-  return {0, 0};
+  // LAB 1 DONE
+  pageid_t curPageID = first_page_id_;
+  bool hasInserted = false;
+  std::shared_ptr<TablePage> curPageHandle;
+
+  slotid_t resSlotID = 0;
+  pageid_t resPageID = 0;
+
+  if(first_page_id_ == NULL_PAGE_ID){
+    std::shared_ptr<Page> newPgae = buffer_pool_.NewPage(db_oid_, oid_, 0);
+    first_page_id_ = 0;
+    curPageHandle = std::make_shared<TablePage>(newPgae);
+    curPageHandle->Init();
+    curPageHandle->SetNextPageId(NULL_PAGE_ID);
+    hasInserted = true;
+
+    resSlotID = curPageHandle->InsertRecord(record, xid, cid);
+    resPageID = 0;
+  }
+
+
+  while(not hasInserted){
+    std::shared_ptr<Page> page = buffer_pool_.GetPage(db_oid_, oid_, curPageID);
+    curPageHandle = std::make_shared<TablePage>(page);
+    if(curPageHandle->GetFreeSpaceSize() > record->GetSize()){
+      hasInserted = true;
+      resSlotID = curPageHandle->InsertRecord(record, xid, cid);
+      resPageID = curPageID;
+      break;
+    }
+    if(curPageHandle->GetNextPageId() == NULL_PAGE_ID){
+      break;
+    }else{
+      curPageID = curPageHandle->GetNextPageId();
+    }
+  }
+  
+  if(not hasInserted){
+    pageid_t newPageID = curPageID + 1;
+    curPageHandle->SetNextPageId(newPageID);
+    std::shared_ptr<Page> newPage = buffer_pool_.NewPage(db_oid_, oid_, newPageID);
+
+    curPageHandle = std::make_shared<TablePage>(newPage);
+    curPageHandle->Init();
+    curPageHandle->SetNextPageId(NULL_PAGE_ID);
+    
+    hasInserted = true;
+    resSlotID = curPageHandle->InsertRecord(record, xid, cid);
+    resPageID = newPageID;
+  }
+
+  return {resPageID, resSlotID};
 }
 
 void Table::DeleteRecord(const Rid &rid, xid_t xid, bool write_log) {
@@ -46,7 +97,10 @@ void Table::DeleteRecord(const Rid &rid, xid_t xid, bool write_log) {
   // LAB 2 BEGIN
 
   // 使用 TablePage 操作页面
-  // LAB 1 BEGIN
+  // LAB 1 DONE
+  std::shared_ptr<Page> page = buffer_pool_.GetPage(db_oid_, oid_, rid.page_id_);
+  TablePage pageHandle(page);
+  pageHandle.DeleteRecord(rid.slot_id_, xid);
 }
 
 Rid Table::UpdateRecord(const Rid &rid, xid_t xid, cid_t cid, std::shared_ptr<Record> record, bool write_log) {

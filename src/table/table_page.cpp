@@ -1,6 +1,7 @@
 #include "table/table_page.h"
 
 #include <sstream>
+#include<iostream>
 
 namespace huadb {
 
@@ -36,8 +37,19 @@ slotid_t TablePage::InsertRecord(std::shared_ptr<Record> record, xid_t xid, cid_
   // 将 record 写入 page data
   // 将 page 标记为 dirty
   // 返回插入的 slot id
-  // LAB 1 BEGIN
-  return 0;
+  // LAB 1 DONE
+  db_size_t recordSize = record->GetSize();
+  slotid_t slot_id = GetRecordCount();
+  *upper_ -= recordSize;
+  *lower_ += sizeof(Slot);
+
+  slots_[slot_id].offset_ = *upper_;
+  slots_[slot_id].size_ = recordSize;
+
+  record->SerializeTo(page_data_ + slots_[slot_id].offset_);
+  page_->SetDirty();
+
+  return slot_id;
 }
 
 void TablePage::DeleteRecord(slotid_t slot_id, xid_t xid) {
@@ -47,7 +59,12 @@ void TablePage::DeleteRecord(slotid_t slot_id, xid_t xid) {
   // 将 slot_id 对应的 record 标记为删除
   // 可使用 Record::DeserializeHeaderFrom 函数读取记录头
   // 将 page 标记为 dirty
-  // LAB 1 BEGIN
+  // LAB 1 DONE
+  Record header;
+  header.DeserializeHeaderFrom(page_data_ + slots_[slot_id].offset_);
+  header.SetDeleted(true);
+  header.SerializeHeaderTo(page_data_ + slots_[slot_id].offset_);
+  page_->SetDirty();
 }
 
 void TablePage::UpdateRecordInPlace(const Record &record, slotid_t slot_id) {
@@ -58,8 +75,13 @@ void TablePage::UpdateRecordInPlace(const Record &record, slotid_t slot_id) {
 std::shared_ptr<Record> TablePage::GetRecord(Rid rid, const ColumnList &column_list) {
   // 根据 slot_id 获取 record
   // 新建 record 并设置 rid
-  // LAB 1 BEGIN
-  return nullptr;
+  // LAB 1 DONE
+  std::shared_ptr<Record> result = std::make_shared<Record>();
+  result->SetRid(rid);
+  db_size_t offset = slots_[rid.slot_id_].offset_;
+  result->DeserializeFrom(page_data_ + offset, column_list);
+
+  return result;
 }
 
 void TablePage::UndoDeleteRecord(slotid_t slot_id) {
