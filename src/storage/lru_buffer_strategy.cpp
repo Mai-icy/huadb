@@ -19,6 +19,7 @@ size_t LRUBufferStrategy::Evict() {
   // LAB 1 BEGIN
   size_t res = cache_items_.back();
   cache_items_.pop_back();
+  cache_map_.erase(res);
   return res;
 }
 
