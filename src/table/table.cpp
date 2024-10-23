@@ -28,7 +28,7 @@ Rid Table::InsertRecord(std::shared_ptr<Record> record, xid_t xid, cid_t cid, bo
   // 在插入记录时增加写 InsertLog 过程
   // 在创建新的页面时增加写 NewPageLog 过程
   // 设置页面的 page lsn
-  // LAB 2 BEGIN
+  // LAB 2 DONE
 
   // 使用 buffer_pool_ 获取页面
   // 使用 TablePage 类操作记录页面
@@ -47,14 +47,18 @@ Rid Table::InsertRecord(std::shared_ptr<Record> record, xid_t xid, cid_t cid, bo
 
   if(first_page_id_ == NULL_PAGE_ID){
     std::shared_ptr<Page> newPgae = buffer_pool_.NewPage(db_oid_, oid_, 0);
+    if(write_log){
+      log_manager_.AppendNewPageLog(xid, oid_, NULL_PAGE_ID, 0);
+    }
     first_page_id_ = 0;
     curPageHandle = std::make_shared<TablePage>(newPgae);
     curPageHandle->Init();
     curPageHandle->SetNextPageId(NULL_PAGE_ID);
+    // curPageHandle->SetPageLSN(lsn)
     hasInserted = true;
 
-    resSlotID = curPageHandle->InsertRecord(record, xid, cid);
-    resPageID = 0;
+    // resSlotID = curPageHandle->InsertRecord(record, xid, cid);
+    // resPageID = 0;
   }
 
 
@@ -63,7 +67,7 @@ Rid Table::InsertRecord(std::shared_ptr<Record> record, xid_t xid, cid_t cid, bo
     curPageHandle = std::make_shared<TablePage>(page);
     if(curPageHandle->GetFreeSpaceSize() > record->GetSize()){
       hasInserted = true;
-      resSlotID = curPageHandle->InsertRecord(record, xid, cid);
+      // resSlotID = curPageHandle->InsertRecord(record, xid, cid);
       resPageID = curPageID;
       break;
     }
@@ -76,6 +80,10 @@ Rid Table::InsertRecord(std::shared_ptr<Record> record, xid_t xid, cid_t cid, bo
   
   if(not hasInserted){
     pageid_t newPageID = curPageID + 1;
+
+    if(write_log){
+      log_manager_.AppendNewPageLog(xid, oid_, curPageID, newPageID);
+    }
     curPageHandle->SetNextPageId(newPageID);
     std::shared_ptr<Page> newPage = buffer_pool_.NewPage(db_oid_, oid_, newPageID);
 
@@ -84,9 +92,25 @@ Rid Table::InsertRecord(std::shared_ptr<Record> record, xid_t xid, cid_t cid, bo
     curPageHandle->SetNextPageId(NULL_PAGE_ID);
     
     hasInserted = true;
-    resSlotID = curPageHandle->InsertRecord(record, xid, cid);
+    // resSlotID = curPageHandle->InsertRecord(record, xid, cid);
     resPageID = newPageID;
   }
+
+  resSlotID = curPageHandle->GetRecordCount();
+  if(write_log){
+    db_size_t recordSize = record->GetSize();
+    db_size_t offset = curPageHandle->GetUpper() - recordSize;
+
+    char *buffer = new char[record->GetSize()];
+    db_size_t size = record->SerializeTo(buffer);
+
+    lsn_t curLsn = log_manager_.AppendInsertLog(xid, oid_, resPageID, resSlotID, offset, recordSize, buffer);
+    delete [] buffer;
+
+    curPageHandle->SetPageLSN(curLsn);
+  }
+  resSlotID = curPageHandle->InsertRecord(record, xid, cid);
+
 
   return {resPageID, resSlotID};
 }
@@ -94,12 +118,17 @@ Rid Table::InsertRecord(std::shared_ptr<Record> record, xid_t xid, cid_t cid, bo
 void Table::DeleteRecord(const Rid &rid, xid_t xid, bool write_log) {
   // 增加写 DeleteLog 过程
   // 设置页面的 page lsn
-  // LAB 2 BEGIN
-
+  // LAB 2 DONE
   // 使用 TablePage 操作页面
   // LAB 1 DONE
   std::shared_ptr<Page> page = buffer_pool_.GetPage(db_oid_, oid_, rid.page_id_);
   TablePage pageHandle(page);
+
+  if(write_log){
+    lsn_t curLsn = log_manager_.AppendDeleteLog(xid, oid_, rid.page_id_, rid.slot_id_);
+    pageHandle.SetPageLSN(curLsn);
+  }
+
   pageHandle.DeleteRecord(rid.slot_id_, xid);
 }
 

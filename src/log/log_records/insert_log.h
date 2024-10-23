@@ -1,6 +1,7 @@
 #pragma once
 
 #include "log/log_record.h"
+#include "table/table_page.h"
 
 namespace huadb {
 

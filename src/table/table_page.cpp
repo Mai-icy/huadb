@@ -90,14 +90,29 @@ void TablePage::UndoDeleteRecord(slotid_t slot_id) {
 
   // 清除记录的删除标记
   // 将页面设为 dirty
-  // LAB 2 BEGIN
+  // LAB 2 DONE
+  Record header;
+  header.DeserializeHeaderFrom(page_data_ + slots_[slot_id].offset_);
+  header.SetDeleted(false);
+  header.SerializeHeaderTo(page_data_ + slots_[slot_id].offset_);
+  page_->SetDirty();
 }
 
 void TablePage::RedoInsertRecord(slotid_t slot_id, char *raw_record, db_size_t page_offset, db_size_t record_size) {
   // 将 raw_record 写入 page data
   // 注意维护 lower 和 upper 指针，以及 slots 数组
   // 将页面设为 dirty
-  // LAB 2 BEGIN
+  // LAB 2 DONE
+
+  *lower_ = PAGE_HEADER_SIZE + (slot_id + 1) * sizeof(Slot);
+  *upper_ = page_offset;
+
+  slots_[slot_id].offset_ = *upper_;
+  slots_[slot_id].size_ = record_size;
+  
+  memcpy(page_data_ + page_offset, raw_record, record_size);
+
+  page_->SetDirty();
 }
 
 db_size_t TablePage::GetRecordCount() const { return (*lower_ - PAGE_HEADER_SIZE) / sizeof(Slot); }

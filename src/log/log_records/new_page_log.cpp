@@ -1,4 +1,5 @@
 #include "log/log_records/new_page_log.h"
+#include<iostream>
 
 namespace huadb {
 
@@ -40,6 +41,11 @@ std::shared_ptr<NewPageLog> NewPageLog::DeserializeFrom(lsn_t lsn, const char *d
 
 void NewPageLog::Undo(BufferPool &buffer_pool, Catalog &catalog, LogManager &log_manager, lsn_t undo_next_lsn) {
   // LAB 2 BEGIN
+  oid_t db_oid = catalog.GetDatabaseOid(GetOid());
+
+  std::shared_ptr<huadb::Page> page = buffer_pool.GetPage(db_oid, oid_, page_id_);
+  TablePage pageHandle(page);
+  pageHandle.Init();
 }
 
 void NewPageLog::Redo(BufferPool &buffer_pool, Catalog &catalog, LogManager &log_manager) {
@@ -49,6 +55,22 @@ void NewPageLog::Redo(BufferPool &buffer_pool, Catalog &catalog, LogManager &log
   }
   // 根据日志信息进行重做
   // LAB 2 BEGIN
+  oid_t db_oid = catalog.GetDatabaseOid(GetOid());
+
+  std::shared_ptr<huadb::Page> page, lastPage;
+  if(page_id_ == 0){
+    page = buffer_pool.NewPage(db_oid, oid_, page_id_);
+    lastPage = nullptr;
+  }else{
+    page = buffer_pool.NewPage(db_oid, oid_, page_id_);
+    lastPage = buffer_pool.GetPage(db_oid, oid_, page_id_ - 1);
+  }
+  if(lastPage != nullptr){
+    TablePage pageHandle(lastPage);
+    pageHandle.SetNextPageId(page_id_);
+  }
+  TablePage pageHandle(page);
+  pageHandle.Init();
 }
 
 oid_t NewPageLog::GetOid() const { return oid_; }

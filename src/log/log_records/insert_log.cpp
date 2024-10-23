@@ -1,4 +1,5 @@
 #include "log/log_records/insert_log.h"
+#include<iostream>
 
 namespace huadb {
 
@@ -71,7 +72,11 @@ std::shared_ptr<InsertLog> InsertLog::DeserializeFrom(lsn_t lsn, const char *dat
 void InsertLog::Undo(BufferPool &buffer_pool, Catalog &catalog, LogManager &log_manager, lsn_t undo_next_lsn) {
   // 将插入的记录删除
   // 通过 catalog_ 获取 db_oid
-  // LAB 2 BEGIN
+  // LAB 2 DONE
+  oid_t db_oid = catalog.GetDatabaseOid(GetOid());
+  std::shared_ptr<huadb::Page> page = buffer_pool.GetPage(db_oid, oid_, page_id_);
+  TablePage pageHandle(page);
+  pageHandle.DeleteRecord(slot_id_, xid_);
 }
 
 void InsertLog::Redo(BufferPool &buffer_pool, Catalog &catalog, LogManager &log_manager) {
@@ -80,7 +85,12 @@ void InsertLog::Redo(BufferPool &buffer_pool, Catalog &catalog, LogManager &log_
     return;
   }
   // 根据日志信息进行重做
-  // LAB 2 BEGIN
+  // LAB 2 DONE
+  
+  oid_t db_oid = catalog.GetDatabaseOid(GetOid());
+  std::shared_ptr<huadb::Page> page = buffer_pool.GetPage(db_oid, oid_, page_id_);
+  TablePage pageHandle(page);
+  pageHandle.RedoInsertRecord(slot_id_, record_, page_offset_, record_size_);
 }
 
 oid_t InsertLog::GetOid() const { return oid_; }

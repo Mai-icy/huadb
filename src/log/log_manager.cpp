@@ -176,7 +176,28 @@ void LogManager::Rollback(xid_t xid) {
   // 若日志在磁盘中，通过 disk_ 读取日志，count 参数可设置为 MAX_LOG_SIZE
   // 通过 LogRecord::DeserializeFrom 函数解析日志
   // 调用日志的 Undo 函数
-  // LAB 2 BEGIN
+  // LAB 2 DONE
+  lsn_t lastLSN = att_[xid];
+  lsn_t prevLSN = NULL_LSN;
+  while(lastLSN != NULL_LSN){
+    std::shared_ptr<huadb::LogRecord> logRec;
+    if(lastLSN < flushed_lsn_){
+      char logData[MAX_LOG_SIZE];
+      disk_.ReadLog(lastLSN, MAX_LOG_SIZE, logData);
+      logRec = LogRecord::DeserializeFrom(lastLSN, logData);
+    }else{
+      for(auto pLog: log_buffer_){
+        if(pLog->GetLSN() == lastLSN){
+          logRec = pLog;
+          break;
+        }
+      }
+    }
+    prevLSN = logRec->GetPrevLSN();
+    logRec->Undo(*buffer_pool_, *catalog_, *this, prevLSN);
+    lastLSN = prevLSN;
+    att_[xid] = lastLSN;
+  }
 }
 
 void LogManager::Recover() {
@@ -249,16 +270,103 @@ void LogManager::Analyze() {
   // 根据 Checkpoint 日志恢复脏页表、活跃事务表等元信息
   // 必要时调用 transaction_manager_.SetNextXid 来恢复事务 id
   // LAB 2 BEGIN
+  xid_t max_xid = transaction_manager_.GetNextXid();
+
+  lsn_t curLSN = checkpoint_lsn;
+  lsn_t end = next_lsn_;
+  while (curLSN < end) {
+    std::shared_ptr<huadb::LogRecord> logRec = nullptr;
+    if (curLSN <= flushed_lsn_) {
+        char logData[MAX_LOG_SIZE + 10];
+        disk_.ReadLog(curLSN, MAX_LOG_SIZE, logData);
+        logRec = LogRecord::DeserializeFrom(curLSN, logData);
+    } else {
+        for (const auto& pLog : log_buffer_) {
+            if (pLog->GetLSN() == curLSN) {
+                logRec = pLog;
+                break;
+            }
+        }
+    }
+    xid_t xid = logRec->GetXid();
+    max_xid = std::max(xid + 1, max_xid);
+
+    if(att_.count(xid)){
+      if(logRec->GetType() == LogType::COMMIT){
+        att_.erase(xid);
+      }else{
+        att_[xid] = logRec->GetLSN();
+      }
+    }else{
+      if(logRec->GetType() != LogType::COMMIT)
+        att_[xid] = logRec->GetLSN();
+    }
+
+    if(logRec->GetType() == LogType::DELETE){
+      std::shared_ptr<DeleteLog> curLog = std::dynamic_pointer_cast<DeleteLog>(logRec);
+      TablePageid page_id = {curLog->GetOid(), curLog->GetPageId()};
+      if(not dpt_.count(page_id)){
+        dpt_[page_id] = curLog->GetLSN();
+      }
+    }else if(logRec->GetType() == LogType::INSERT){
+      std::shared_ptr<InsertLog> curLog = std::dynamic_pointer_cast<InsertLog>(logRec);
+      TablePageid page_id = {curLog->GetOid(), curLog->GetPageId()};
+      if(not dpt_.count(page_id)){
+        dpt_[page_id] = curLog->GetLSN();
+      }
+    }else if(logRec->GetType() == LogType::NEW_PAGE){
+      std::shared_ptr<NewPageLog> curLog = std::dynamic_pointer_cast<NewPageLog>(logRec);
+      TablePageid page_id = {curLog->GetOid(), curLog->GetPageId()};
+      if(not dpt_.count(page_id)){
+        dpt_[page_id] = curLog->GetLSN();
+      }
+    }
+    curLSN += logRec->GetSize();
+  }
+  transaction_manager_.SetNextXid(max_xid);
 }
 
 void LogManager::Redo() {
   // 正序读取日志，调用日志记录的 Redo 函数
-  // LAB 2 BEGIN
+  // LAB 2 DONE
+  lsn_t minRecLSN = 0;
+
+  if(dpt_.empty()){
+    minRecLSN = Checkpoint();
+  }else{
+    minRecLSN = next_lsn_;
+    for(auto [_, lsn]: dpt_){
+      minRecLSN = std::min(minRecLSN, lsn);
+    }
+  }
+
+  lsn_t curLSN = minRecLSN;
+  lsn_t end = next_lsn_;
+  while (curLSN < end) {
+    std::shared_ptr<huadb::LogRecord> logRec = nullptr;
+    if (curLSN <= flushed_lsn_) {
+        char logData[MAX_LOG_SIZE + 10];
+        disk_.ReadLog(curLSN, MAX_LOG_SIZE, logData);
+        logRec = LogRecord::DeserializeFrom(curLSN, logData);
+    } else {
+        for (const auto& pLog : log_buffer_) {
+            if (pLog->GetLSN() == curLSN) {
+                logRec = pLog;
+                break;
+            }
+        }
+    }
+    logRec->Redo(*buffer_pool_, *catalog_, *this);
+    curLSN += logRec->GetSize();
+  }
 }
 
 void LogManager::Undo() {
   // 根据活跃事务表，将所有活跃事务回滚
-  // LAB 2 BEGIN
+  // LAB 2 DONE
+  for(auto[xid,_]: att_){
+    Rollback(xid);
+  }
 }
 
 }  // namespace huadb
