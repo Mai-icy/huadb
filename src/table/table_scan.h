@@ -19,10 +19,10 @@ class TableScan {
   // 均为 Lab 3 相关参数
   std::shared_ptr<Record> GetNextRecord(xid_t xid = NULL_XID, IsolationLevel isolation_level = DEFAULT_ISOLATION_LEVEL,
                                         cid_t cid = NULL_CID, const std::unordered_set<xid_t> &active_xids = {});
-
+                                        
+  std::shared_ptr<Table> table_;
  private:
   BufferPool &buffer_pool_;
-  std::shared_ptr<Table> table_;
   Rid rid_;  // 当前扫描到的记录的 rid
 };
 

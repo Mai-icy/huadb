@@ -31,6 +31,66 @@ std::shared_ptr<Record> TableScan::GetNextRecord(xid_t xid, IsolationLevel isola
   TablePage pageHandle(curPage);
   db_size_t recordCnt = pageHandle.GetRecordCount();
 
+  std::function<bool(std::shared_ptr<Record>)> isVisable = [&](std::shared_ptr<Record> rec) {
+    if(isolation_level == IsolationLevel::READ_COMMITTED){
+      xid_t del_xid = rec->GetXmax();
+      if (del_xid != NULL_XID) {
+        if (del_xid == xid && rec->GetCid() <= cid) {
+          return false;
+        }
+        
+        if (!active_xids.count(del_xid) and del_xid != xid) {
+          return false;
+        }
+      }
+
+      xid_t insert_xid = rec->GetXmin();
+      if (insert_xid != NULL_XID) {
+        if (insert_xid == xid) {
+          if(rec->GetCid() >= cid){
+            return false;
+          }else{
+            return true;
+          }
+        }
+        
+        if (active_xids.count(insert_xid)) {
+          return false;
+        }
+      } else {
+        return false;
+      }
+      return true;
+
+    } else { // if(isolation_level == IsolationLevel::REPEATABLE_READ)
+      xid_t del_xid = rec->GetXmax();
+      if (del_xid != NULL_XID) {
+        if (del_xid == xid && rec->GetCid() <= cid) {
+          return false;
+        }
+        if (!active_xids.count(del_xid) and del_xid < xid) {
+          return false;
+        }
+      }
+
+      xid_t insert_xid = rec->GetXmin();
+      if (insert_xid != NULL_XID) {
+        if (insert_xid > xid){
+          return false;
+        }
+        if (insert_xid == xid && rec->GetCid() >= cid) {
+          return false;
+        }
+        if (active_xids.count(insert_xid)) {
+          return false;
+        }
+      }else{
+        return false;
+      }
+      return true;
+    }
+  };
+
   while (true) {
 
     if (rid_.slot_id_ >= recordCnt) {
@@ -48,7 +108,9 @@ std::shared_ptr<Record> TableScan::GetNextRecord(xid_t xid, IsolationLevel isola
     }
 
     std::shared_ptr<Record> result = pageHandle.GetRecord(rid_, table_->GetColumnList());
-    if (result->IsDeleted()) {
+    // if (result->IsDeleted()){ // lab1
+
+    if (not isVisable(result)) {
       rid_.slot_id_++;
       continue;
     }

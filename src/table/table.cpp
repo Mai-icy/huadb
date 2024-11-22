@@ -101,6 +101,10 @@ Rid Table::InsertRecord(std::shared_ptr<Record> record, xid_t xid, cid_t cid, bo
     db_size_t recordSize = record->GetSize();
     db_size_t offset = curPageHandle->GetUpper() - recordSize;
 
+    record->SetCid(cid);
+    record->SetXmin(xid);
+    record->SetXmax(NULL_XID);
+
     char *buffer = new char[record->GetSize()];
     db_size_t size = record->SerializeTo(buffer);
 

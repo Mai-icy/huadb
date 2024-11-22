@@ -27,8 +27,22 @@ std::shared_ptr<Record> InsertExecutor::Next() {
     auto table_record = std::make_shared<Record>(std::move(values));
     // 通过 context_ 获取正确的锁，加锁失败时抛出异常
     // LAB 3 BEGIN
+    LockManager &lockManager = context_.GetLockManager();
+    xid_t xid = context_.GetXid();
+    
+    bool success;
+    success = lockManager.LockTable(xid, LockType::IX, table_->GetOid());
+    if(not success){
+      throw DbException("cannot add lock");
+    }
+
     auto rid = table_->InsertRecord(std::move(table_record), context_.GetXid(), context_.GetCid(), true);
     count++;
+
+    success = lockManager.LockRow(xid, LockType::X, table_->GetOid(), rid);
+    if(not success){
+      throw DbException("cannot add lock");
+    }
   }
   finished_ = true;
   return std::make_shared<Record>(std::vector{Value(count)});

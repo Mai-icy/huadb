@@ -18,6 +18,22 @@ std::shared_ptr<Record> DeleteExecutor::Next() {
   while (auto record = children_[0]->Next()) {
     // 通过 context_ 获取正确的锁，加锁失败时抛出异常
     // LAB 3 BEGIN
+    
+    LockManager &lockManager = context_.GetLockManager();
+    xid_t xid = context_.GetXid();
+    
+    bool success;
+    success = lockManager.LockTable(xid, LockType::IX, table_->GetOid());
+    if(not success){
+      throw DbException("cannot add lock");
+    }
+
+    success = lockManager.LockRow(xid, LockType::X, table_->GetOid(), record->GetRid());
+    if(not success){
+      throw DbException("cannot add lock");
+    }
+
+
     table_->DeleteRecord(record->GetRid(), context_.GetXid(), true);
     count++;
   }

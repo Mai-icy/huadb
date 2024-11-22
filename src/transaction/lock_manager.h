@@ -1,21 +1,28 @@
 #pragma once
 
 #include "common/types.h"
+#include <map>
+#include <vector>
 
 namespace huadb {
 
 enum class LockType {
-  IS,   // 意向共享锁
-  IX,   // 意向互斥锁
-  S,    // 共享锁
-  SIX,  // 共享意向互斥锁
-  X,    // 互斥锁
+  IS = 2,   // 意向共享锁
+  IX = 3,   // 意向互斥锁
+  S = 0,    // 共享锁
+  SIX = 4,  // 共享意向互斥锁
+  X = 1,    // 互斥锁
 };
 
 enum class LockGranularity { TABLE, ROW };
 
 // 高级功能：死锁预防/检测类型
 enum class DeadlockType { NONE, WAIT_DIE, WOUND_WAIT, DETECTION };
+
+struct Lock {
+  xid_t xid;
+  LockType lock_type;
+};
 
 class LockManager {
  public:
@@ -36,6 +43,12 @@ class LockManager {
   LockType Upgrade(LockType self, LockType other) const;
 
   DeadlockType deadlock_type_ = DeadlockType::NONE;
+
+  std::map<oid_t, std::vector<Lock>> lock_table_;
+  std::map<std::pair<oid_t, Rid>, std::vector<Lock>> row_lock_table_;
+
+  std::map<xid_t, std::vector<oid_t>> xid_table_lock_;
+  std::map<xid_t, std::vector<std::pair<oid_t, Rid>>> xid_row_lock_;
 };
 
 }  // namespace huadb
